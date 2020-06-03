@@ -18,8 +18,8 @@
 pub type Matrix<T> = Vec<Vec<T>>;
 
 const EPSILON: f64 = 1e-10;  // 収束条件
-const LOOP_MAX: usize = 100;  // いくらループしてもここまで
-const FRAC_PI_4: f64 = std::f64::consts::FRAC_PI_4;
+const LOOP_MAX: usize = 500;  // いくらループしてもここまで
+const FRAC_1_SQRT_2: f64 = std::f64::consts::FRAC_1_SQRT_2;  // 1 / √2
 
 
 /// Jacobi法により実対称行列の固有値・固有ベクトルを求める．
@@ -40,7 +40,7 @@ pub fn jacobi(mut a: Matrix<f64>) -> (Vec<f64>, Matrix<f64>) {
     }
     
     // 反復計算
-    for loop_num in 0..LOOP_MAX {
+    for _ in 0..LOOP_MAX {
         let (a_max, [p, q]) = search_max_index(&a);
 
         // 対角化が終わったことを判断するには，非対角行列成分の最大値を見れば良い．
@@ -54,17 +54,14 @@ pub fn jacobi(mut a: Matrix<f64>) -> (Vec<f64>, Matrix<f64>) {
 
             // 回転角
             let [sin, cos, sin_pow2, cos_pow2] = calc_sin_cos(a_pp, a_qq, a_pq);
-            let sin_cos = sin * cos;
 
-            // ---------- 実対称行列Aを相似変換 ---------- //
+            // ---------- 実対称行列Aを対角化 ---------- //
             // pp, qq, pq, qp更新
-            let tmp = 2.0 * a_pq * sin_cos;
+            let tmp = 2.0 * a_pq * sin * cos;
             a[p][p] = a_pp * cos_pow2 + a_qq * sin_pow2 + tmp;
             a[q][q] = a_pp * sin_pow2 + a_qq * cos_pow2 - tmp;
-            //let tmp = a_pq * (cos_pow2 - sin_pow2) + (a_qq - a_pp) * sin_cos;
-            //a[p][q] = tmp;
-            //a[q][p] = tmp;
-            a[p][q] = 0.0;  // 0にしちゃえばうまく計算できるけど，これでいいのか？
+            // ここが0になるようにthetaを計算しているので，計算せずに0を代入してしまう．
+            a[p][q] = 0.0;
             a[q][p] = 0.0;
 
             // pj, qj, ip, iq 更新
@@ -72,28 +69,21 @@ pub fn jacobi(mut a: Matrix<f64>) -> (Vec<f64>, Matrix<f64>) {
                 if (i != p) && (i != q) {
                     let a_ip = a[i][p];
                     let a_iq = a[i][q];
-                    //let a_pi = a[p][i];
-                    //let a_qi = a[q][i];
                     a[i][p] =  a_ip * cos + a_iq * sin;
                     a[i][q] = -a_ip * sin + a_iq * cos;
-                    //a[p][i] =  a_pi * cos + a_qi * sin;
-                    //a[q][i] = -a_pi * sin + a_qi + cos;
-
-                    a[p][i] = a[i][p];  // こうすると上手くいく
+                    // 対称行列なので入る値は同じ
+                    a[p][i] = a[i][p];
                     a[q][i] = a[i][q];
                 }
             }
 
-            // ---------- 直交行列Rを更新 ---------- //
+            // ------------ 直交行列Rを更新 ------------ //
             for i in 0..n {
                 let r_ip = r[i][p];
                 let r_iq = r[i][q];
                 r[i][p] =  r_ip * cos + r_iq * sin;
                 r[i][q] = -r_ip * sin + r_iq * cos;
             }
-
-            // 計算過程表示
-            println!("step: {} | a_max: {}", loop_num, a_max);
         }
     }
 
@@ -101,8 +91,6 @@ pub fn jacobi(mut a: Matrix<f64>) -> (Vec<f64>, Matrix<f64>) {
     for i in 0..n {
         lambda.push(a[i][i]);
     }
-
-    println!("a: {:?}", a);
 
     // 直交行列の縦ベクトルが固有ベクトルになるので，行ベクトルに入れ直す．
     let mut x = Vec::with_capacity(n);
@@ -142,56 +130,25 @@ fn search_max_index(a: &Matrix<f64>) -> (f64, [usize; 2]) {
     (max_num, p_q)
 }
 
-/// 回転角を求める．
+/// a_pq, a_qpが0となるような回転角を求める．
 /// return: [sinθ, cosθ, sinθ^2, cosθ^2]
 #[inline]
 fn calc_sin_cos(a_pp: f64, a_qq: f64, a_pq: f64) -> [f64; 4] {
-    // 「プログラミングのための線形代数」に載っていた方法
-    /*
-    let atan_2theta = (2.0 * a_pq) / (a_pp - a_qq);
-    let tmp = 0.5 / (1.0 + atan_2theta*atan_2theta).sqrt();
-    let sin_pow2 = 0.5 - tmp;
-    let cos_pow2 = 0.5 + tmp;
-    let sin = sin_pow2.sqrt();
-    let cos = cos_pow2.sqrt();
-    [sin, cos, sin_pow2, cos_pow2]
-    */
-
-    // [物理のかぎしっぽ]に載っていた方法
-    /*
-    let alpha = 0.5 * (a_pp - a_qq);
-    let beta  = -a_pq;
-    let gamma = alpha.abs() / (alpha*alpha + beta*beta).sqrt();
-    let sin_pow2 = 0.5 * (1.0 - gamma);
-    let cos_pow2 = 0.5 * (1.0 + gamma);
-    let sin = sin_pow2.sqrt().copysign(alpha * beta);
-    let cos = cos_pow2.sqrt();
-    [sin, cos, sin_pow2, cos_pow2]
-    */
-
-    // 上の求め方は少し捻った方法なので，先ずは以下の式で動作を確認する
-    
     let tmp = a_pp - a_qq;
-    let theta = if tmp.abs() < EPSILON {
-        FRAC_PI_4.copysign(a_pq)
+    let (sin, cos) = if tmp.abs() < EPSILON {
+        (FRAC_1_SQRT_2, FRAC_1_SQRT_2)
     } else {
-        0.5 * ( (2.0 * a_pq) / tmp ).atan()
+        let theta = 0.5 * ( (2.0 * a_pq) / tmp ).atan();
+        ( theta.sin(), theta.cos() )
     };
-    let sin = theta.sin();
-    let cos = theta.cos();
+
     [sin, cos, sin*sin, cos*cos]
-    
 }
 
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
-    }
 
     #[test]
     fn test_jacobi() {
@@ -205,8 +162,12 @@ mod tests {
 
         let (eigenval, eigenvec) = jacobi(a);
         println!("eigenvalue: {:?}", eigenval);
-        println!("eigenvector: {:?}", eigenvec);
 
-        assert!(false);
+        println!("eigenvector: ");
+        for i in 0..eigenvec.len() {
+            println!("{:?}", eigenvec[i]);
+        }
+
+        //assert!(false);
     }
 }
