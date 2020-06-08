@@ -27,10 +27,9 @@ const FRAC_1_SQRT_2: f64 = std::f64::consts::FRAC_1_SQRT_2;  // 1 / √2
 #[inline]
 pub fn jacobi(mut a: Matrix<f64>) -> (Vec<f64>, Matrix<f64>) {
     let n = a.len();  // 正方行列のサイズ
-    let mut lambda = Vec::with_capacity(n);  // 固有値
-    let mut r = Vec::with_capacity(n);  // 直交行列（最終的に固有ベクトルとなる）
 
     // 直交行列を初期化（単位行列）
+    let mut r = Vec::with_capacity(n);
     for i in 0..n {
         let mut line = Vec::with_capacity(n);
         for j in 0..n {
@@ -40,6 +39,7 @@ pub fn jacobi(mut a: Matrix<f64>) -> (Vec<f64>, Matrix<f64>) {
     }
     
     // 反復計算
+    let mut loop_num = 0;
     for _ in 0..LOOP_MAX {
         let (a_max, [p, q]) = search_max_index(&a);
 
@@ -60,7 +60,7 @@ pub fn jacobi(mut a: Matrix<f64>) -> (Vec<f64>, Matrix<f64>) {
             let tmp = 2.0 * a_pq * sin * cos;
             a[p][p] = a_pp * cos_pow2 + a_qq * sin_pow2 + tmp;
             a[q][q] = a_pp * sin_pow2 + a_qq * cos_pow2 - tmp;
-            // ここが0になるようにthetaを計算しているので，計算せずに0を代入してしまう．
+            // ここが0になるようにthetaを定義しているので，計算せずに0を代入してしまう．
             a[p][q] = 0.0;
             a[q][p] = 0.0;
 
@@ -85,9 +85,17 @@ pub fn jacobi(mut a: Matrix<f64>) -> (Vec<f64>, Matrix<f64>) {
                 r[i][q] = -r_ip * sin + r_iq * cos;
             }
         }
+
+        loop_num += 1;
+    }
+
+    // 収束確認（収束しなかった場合のみメッセージを出す）
+    if loop_num == LOOP_MAX {
+        println!("Jacobi eigenvalue algorithm did not converge (loop: {}).", LOOP_MAX);
     }
 
     // 固有値を取り出す
+    let mut lambda = Vec::with_capacity(n);
     for i in 0..n {
         lambda.push(a[i][i]);
     }
@@ -139,7 +147,8 @@ fn calc_sin_cos(a_pp: f64, a_qq: f64, a_pq: f64) -> [f64; 4] {
         (FRAC_1_SQRT_2, FRAC_1_SQRT_2)
     } else {
         let theta = 0.5 * ( (2.0 * a_pq) / tmp ).atan();
-        ( theta.sin(), theta.cos() )
+        let f = theta.sin_cos();
+        (f.0, f.1)
     };
 
     [sin, cos, sin*sin, cos*cos]

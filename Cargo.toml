@@ -1,6 +1,6 @@
 [package]
 name = "eigen"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["HamaguRe"]
 edition = "2018"
 
